@@ -1,0 +1,1447 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCode Session Viewer</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --text: #1f2328; --muted: #656d76; --border: #d6dbe1;
+  --code-bg: #f6f8fa; --accent: #2563eb; --hover: #eef2f7;
+  --c-user: #2563eb; --c-assistant: #15803d; --c-reasoning: #7c3aed; --c-tool: #c2410c;
+  --c-task: #db2777; --c-patch: #0369a1; --c-step: #6b7280; --c-other: #b45309; --c-err: #dc2626;
+  --s-kw: #a626a4; --s-str: #50a14f; --s-com: #8a8f98; --s-num: #b76b01; --s-tag: #e45649;
+  --s-attr: #986801; --s-meta: #4078f2; --s-add: #e6ffec; --s-del: #ffebe9; --s-hunk: #ddf4ff;
+  --hl: #fde047;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --panel: #171a21; --text: #e6e8eb; --muted: #9aa3ad; --border: #2c323c;
+    --code-bg: #11141a; --accent: #60a5fa; --hover: #1f242d;
+    --c-user: #60a5fa; --c-assistant: #4ade80; --c-reasoning: #a78bfa; --c-tool: #fb923c;
+    --c-task: #f472b6; --c-patch: #38bdf8; --c-step: #9ca3af; --c-other: #fbbf24; --c-err: #f87171;
+    --s-kw: #c678dd; --s-str: #98c379; --s-com: #6b7280; --s-num: #d19a66; --s-tag: #e06c75;
+    --s-attr: #e5c07b; --s-meta: #61afef; --s-add: #12361f; --s-del: #3d1717; --s-hunk: #102a43;
+    --hl: #a16207;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --panel: #171a21; --text: #e6e8eb; --muted: #9aa3ad; --border: #2c323c;
+  --code-bg: #11141a; --accent: #60a5fa; --hover: #1f242d;
+  --c-user: #60a5fa; --c-assistant: #4ade80; --c-reasoning: #a78bfa; --c-tool: #fb923c;
+  --c-task: #f472b6; --c-patch: #38bdf8; --c-step: #9ca3af; --c-other: #fbbf24; --c-err: #f87171;
+  --s-kw: #c678dd; --s-str: #98c379; --s-com: #6b7280; --s-num: #d19a66; --s-tag: #e06c75;
+  --s-attr: #e5c07b; --s-meta: #61afef; --s-add: #12361f; --s-del: #3d1717; --s-hunk: #102a43;
+  --hl: #a16207;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 10px; cursor: pointer; user-select: none;
+}
+button:hover { background: var(--hover); }
+button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+button.primary:hover { filter: brightness(1.08); }
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
+}
+code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .92em;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+/* ---------- top bar ---------- */
+#topbar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; flex-wrap: wrap;
+  background: var(--panel); border-bottom: 1px solid var(--border); user-select: none;
+}
+#topbar .brand { font-weight: 650; white-space: nowrap; }
+#topbar .grow { flex: 1; }
+#search { width: 260px; max-width: 45vw; }
+#searchCount { color: var(--muted); font-size: 12px; min-width: 48px; }
+#menuBtn { display: none; }
+
+/* ---------- layout ---------- */
+#layout { display: grid; grid-template-columns: 310px 1fr; min-height: 0; }
+#sidebar {
+  overflow-y: auto; border-right: 1px solid var(--border); background: var(--panel);
+  padding: 6px 12px 40px; user-select: none; font-size: 13px;
+}
+#sidebar details { border-bottom: 1px solid var(--border); padding: 6px 0; }
+#sidebar summary { font-weight: 600; cursor: pointer; padding: 2px 0; }
+#sidebar .row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+#sidebar .row label { display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1; }
+#sidebar .cnt { color: var(--muted); font-size: 12px; }
+#sidebar .hint { color: var(--muted); font-size: 12px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.btnrow button { font-size: 12px; padding: 2px 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.chip {
+  font-size: 12px; padding: 1px 8px; border-radius: 12px; border: 1px solid var(--border);
+  cursor: pointer; background: var(--panel);
+}
+.chip.on { background: color-mix(in srgb, var(--c-tool) 16%, var(--panel)); border-color: var(--c-tool); }
+.chip.err { color: var(--c-err); }
+#problemRe { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+#sessions .sess { padding: 4px 6px; border-radius: 6px; cursor: pointer; display: flex; gap: 6px; align-items: flex-start; }
+#sessions .sess:hover { background: var(--hover); }
+#sessions .sess.cur { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+#sessions .sess .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#sessions .sess small { color: var(--muted); display: block; }
+#sessions .sess button { padding: 0 6px; font-size: 12px; }
+#toc a { display: flex; gap: 6px; padding: 3px 4px; border-radius: 5px; color: inherit; text-decoration: none; }
+#toc a:hover { background: var(--hover); }
+#toc .n { color: var(--muted); min-width: 22px; text-align: right; }
+#toc .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#stats table { border-collapse: collapse; width: 100%; font-size: 12px; }
+#stats td { padding: 1px 4px; border-bottom: 1px solid var(--border); }
+#stats td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- main ---------- */
+#main { overflow-y: auto; min-height: 0; position: relative; }
+#timeline { max-width: 1100px; margin: 0 auto; padding: 10px 16px 20px; }
+.sess-head {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 6px 0 10px;
+}
+.sess-head h1 { font-size: 18px; margin: 0 0 4px; }
+.sess-head .meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.sess-head .links { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; user-select: none; }
+.turn {
+  position: sticky; top: 0; z-index: 3; display: flex; gap: 10px; align-items: center;
+  padding: 6px 4px; margin-top: 14px; background: var(--bg); user-select: none;
+  border-bottom: 2px solid color-mix(in srgb, var(--c-user) 50%, var(--bg)); font-weight: 600;
+}
+.turn .tm { color: var(--muted); font-weight: 400; font-size: 12px; }
+.turn button { font-size: 12px; padding: 1px 8px; font-weight: 400; }
+.gap { text-align: center; color: var(--muted); font-size: 12px; padding: 2px; user-select: none; }
+.subhead {
+  margin: 8px 0 2px; padding: 3px 10px; font-size: 12.5px; color: var(--c-task);
+  border-left: 3px dashed var(--c-task); user-select: none;
+}
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty .drop {
+  border: 2px dashed var(--border); border-radius: 14px; padding: 40px 20px; margin: 20px auto; max-width: 640px;
+}
+.empty h2 { color: var(--text); margin-top: 0; }
+
+/* ---------- blocks ---------- */
+.blk {
+  --kc: var(--c-other);
+  background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--kc);
+  border-radius: 8px; margin: 8px 0; scroll-margin-top: 48px;
+}
+.k-user { --kc: var(--c-user); background: color-mix(in srgb, var(--c-user) 5%, var(--panel)); }
+.k-assistant { --kc: var(--c-assistant); }
+.k-reasoning { --kc: var(--c-reasoning); }
+.k-tool { --kc: var(--c-tool); }
+.k-task { --kc: var(--c-task); }
+.k-patch { --kc: var(--c-patch); }
+.k-step { --kc: var(--c-step); }
+.k-other { --kc: var(--c-other); }
+.blk.sub { border-left-style: double; border-left-width: 6px; }
+.blk.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.blk.prob { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-err) 55%, transparent); }
+.blk.cur-match { outline: 2px dashed var(--hl); }
+.bh {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 10px; cursor: pointer;
+  background: color-mix(in srgb, var(--kc) 10%, var(--panel)); border-radius: 7px 7px 0 0; user-select: none;
+}
+.k-step .bh { border-radius: 7px; }
+.bh .kt { font-weight: 600; color: var(--kc); white-space: nowrap; }
+.bh .sum { color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; min-width: 0; }
+.bh .sp { flex: 1; }
+.bh .ib { padding: 0 7px; font-size: 13px; line-height: 20px; opacity: .7; }
+.bh .ib:hover { opacity: 1; }
+.bh input[type="checkbox"] { margin: 0; width: 16px; height: 16px; cursor: pointer; }
+.badge { font-size: 11px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.badge.err { background: var(--c-err); color: #fff; border-color: transparent; }
+.badge.ok { color: var(--c-assistant); border-color: color-mix(in srgb, var(--c-assistant) 40%, var(--border)); }
+.badge.warn { color: var(--c-other); border-color: var(--c-other); }
+.bb { padding: 6px 12px 8px; overflow-wrap: anywhere; }
+.bb:empty { display: none; }
+.k-reasoning .bb { color: var(--muted); font-size: 13.5px; }
+.lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 6px 0 2px; user-select: none; }
+.kv { font-size: 13px; margin: 2px 0; }
+.kv b { color: var(--muted); font-weight: 500; user-select: none; }
+.errbox {
+  border: 1px solid var(--c-err); background: color-mix(in srgb, var(--c-err) 8%, var(--panel));
+  border-radius: 6px; padding: 6px 10px; margin: 6px 0; white-space: pre-wrap;
+}
+.hintbox { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+pre.code {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; margin: 4px 0;
+  font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.raw { white-space: pre-wrap; }
+.expander { font-size: 12px; padding: 1px 10px; margin: 2px 0 4px; }
+.md p { margin: 4px 0 8px; }
+.md h3, .md h4, .md h5, .md h6, .md .mdh { margin: 10px 0 4px; font-size: 1.02em; }
+.md ul, .md ol { margin: 4px 0 8px; padding-left: 22px; }
+.md blockquote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--border); color: var(--muted); }
+.md hr { border: 0; border-top: 1px solid var(--border); }
+.tblwrap { overflow-x: auto; margin: 6px 0; }
+.md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; vertical-align: top; }
+.md th { background: var(--code-bg); }
+.todo { list-style: none; padding-left: 4px; margin: 4px 0; }
+.todo li.done { color: var(--muted); text-decoration: line-through; }
+.note { padding: 4px 12px 10px; }
+.note label { font-size: 12px; color: var(--c-other); user-select: none; display: block; }
+.note textarea { width: 100%; min-height: 54px; resize: vertical; border-color: var(--c-other); }
+
+/* syntax */
+.c-kw { color: var(--s-kw); } .c-str { color: var(--s-str); } .c-com { color: var(--s-com); font-style: italic; }
+.c-num { color: var(--s-num); } .c-tag { color: var(--s-tag); } .c-attr { color: var(--s-attr); }
+.c-meta { color: var(--s-meta); } .c-add { background: var(--s-add); } .c-del { background: var(--s-del); }
+.c-hunk { background: var(--s-hunk); color: var(--s-meta); }
+::highlight(ocv-search) { background: var(--hl); color: inherit; }
+
+/* ---------- selection bar ---------- */
+#selbar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--border); user-select: none;
+}
+#selbar .info { color: var(--muted); font-size: 13px; }
+#selbar .grow { flex: 1; }
+
+/* ---------- modal ---------- */
+#modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; z-index: 20;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#modal.open { display: flex; }
+#modal .box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(1000px, 100%);
+  height: min(86vh, 900px); display: flex; flex-direction: column; padding: 12px;
+}
+#modal .mh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; user-select: none; }
+#modal textarea {
+  flex: 1; width: 100%; resize: none; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre;
+}
+#dropOverlay {
+  position: fixed; inset: 0; display: none; z-index: 30; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 22%, transparent); font-size: 22px; font-weight: 600;
+  border: 4px dashed var(--accent);
+}
+#dropOverlay.on { display: flex; }
+#toast {
+  position: fixed; right: 16px; bottom: 70px; z-index: 40; background: var(--text); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 80vw;
+}
+#toast.on { opacity: .95; }
+#toast.bad { background: var(--c-err); color: #fff; }
+
+@media (max-width: 900px) {
+  #layout { grid-template-columns: 1fr; }
+  #sidebar { display: none; position: fixed; top: 52px; left: 0; bottom: 0; width: min(330px, 92vw); z-index: 15; box-shadow: 4px 0 18px rgba(0,0,0,.25); }
+  body.side-open #sidebar { display: block; }
+  #menuBtn { display: inline-block; }
+  #search { width: 150px; }
+  #timeline { padding: 8px 10px 20px; }
+  .bh .sum { max-width: 60vw; }
+}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button id="menuBtn" title="Панель фильтров">☰</button>
+  <span class="brand">OpenCode Session Viewer</span>
+  <button id="openBtn" class="primary">Открыть файлы…</button>
+  <input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
+  <span class="grow"></span>
+  <input type="text" id="search" placeholder="Поиск…  ( / )" autocomplete="off">
+  <label title="Показывать только блоки с совпадениями"><input type="checkbox" id="searchOnly"> только совпадения</label>
+  <button id="searchPrev" title="Предыдущее совпадение">↑</button>
+  <button id="searchNext" title="Следующее совпадение">↓</button>
+  <span id="searchCount"></span>
+  <button id="themeBtn" title="Тема"></button>
+</header>
+
+<div id="layout">
+  <aside id="sidebar">
+    <details open>
+      <summary>Что показывать</summary>
+      <div id="kindFilters"></div>
+      <div class="row"><label><input type="checkbox" id="optOutput"> Вывод инструментов и результаты субагентов</label></div>
+      <div class="row"><label><input type="checkbox" id="optInline"> Встраивать сессии субагентов</label></div>
+      <div class="row"><label><input type="checkbox" id="optMarkdown"> Рендерить Markdown</label></div>
+      <div class="lbl">Пресеты</div>
+      <div class="btnrow">
+        <button data-preset="dialog">Диалог</button>
+        <button data-preset="thinking">Диалог + мысли</button>
+        <button data-preset="work">Работа (без вывода)</button>
+        <button data-preset="all">Всё</button>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Инструменты</summary>
+      <div class="chips" id="toolChips"></div>
+      <div class="btnrow"><button id="toolsAll">все</button><button id="toolsNone">ни одного</button></div>
+    </details>
+
+    <details open>
+      <summary>Проблемные места</summary>
+      <div class="row"><label><input type="checkbox" id="optProblems"> Только проблемы ± контекст</label>
+        <input type="number" id="optCtx" min="0" max="50" style="width:56px" title="Сколько соседних блоков показывать"></div>
+      <div class="hint" id="probInfo"></div>
+      <div class="lbl">Шаблон ошибки в выводе (RegExp)</div>
+      <input type="text" id="problemRe" spellcheck="false">
+      <div class="hint">Проблема: статус error, exit ≠ 0, совпадение с шаблоном, повтор того же вызова подряд.</div>
+    </details>
+
+    <details open>
+      <summary>Выгрузка (копирование)</summary>
+      <div class="row"><label>Формат
+        <select id="optFmt">
+          <option value="xml">XML-теги (для LLM)</option>
+          <option value="md">Markdown</option>
+        </select></label></div>
+      <div class="row"><label>Обрезать вывод до, строк <input type="number" id="optTrunc" min="0" max="5000" style="width:70px"></label></div>
+      <div class="hint">0 — без обрезки. Сохраняются начало (40%) и конец (60%).</div>
+      <div class="row"><label><input type="checkbox" id="optShort"> Сокращать пути (каталог проекта → .)</label></div>
+      <div class="row"><label><input type="checkbox" id="optHeader"> Шапка сессии</label></div>
+      <div class="row"><label><input type="checkbox" id="optNotes"> Включать заметки</label></div>
+      <div class="hint">В выгрузку попадают только <b>видимые</b> блоки: фильтры выше работают и для копирования.</div>
+    </details>
+
+    <details open>
+      <summary>Сессии</summary>
+      <div id="sessions"></div>
+      <div class="hint">Субагенты связываются автоматически: загрузите их выгрузки вместе с основной.</div>
+    </details>
+
+    <details open>
+      <summary>Оглавление (ходы)</summary>
+      <div id="toc"></div>
+    </details>
+
+    <details>
+      <summary>Статистика</summary>
+      <div id="stats"></div>
+    </details>
+  </aside>
+
+  <main id="main">
+    <div id="timeline"></div>
+    <div id="selbar">
+      <span class="info" id="selInfo"></span>
+      <button id="selAll">Выбрать видимые</button>
+      <button id="selProblems">Выбрать проблемные</button>
+      <button id="selNone">Снять выбор</button>
+      <span class="grow"></span>
+      <button id="previewBtn">Предпросмотр</button>
+      <button id="downloadBtn">Скачать</button>
+      <button id="copyBtn" class="primary">Копировать</button>
+    </div>
+  </main>
+</div>
+
+<div id="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <div class="mh">
+      <b>Предпросмотр выгрузки</b>
+      <select id="modalFmt">
+        <option value="xml">XML-теги (для LLM)</option>
+        <option value="md">Markdown</option>
+      </select>
+      <span id="modalInfo" class="hint" style="color:var(--muted)"></span>
+      <span style="flex:1"></span>
+      <button id="modalCopy" class="primary">Копировать</button>
+      <button id="modalDownload">Скачать</button>
+      <button id="modalClose">Закрыть</button>
+    </div>
+    <textarea id="modalText" spellcheck="false"></textarea>
+  </div>
+</div>
+<div id="dropOverlay">Отпустите файлы выгрузки opencode</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ======================= helpers ======================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC[c]);
+const norm = s => String(s ?? '').replace(/\r\n?/g, '\n');
+const attr = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\n/g, ' ');
+const firstLine = s => norm(s).split('\n').find(l => l.trim()) || '';
+const baseName = p => String(p || '').split(/[\\/]/).pop();
+const fmtTime = ms => ms ? new Date(ms).toLocaleTimeString('ru-RU') : '';
+const fmtDate = ms => ms ? new Date(ms).toLocaleString('ru-RU') : '';
+const fmtNum = n => (n ?? 0).toLocaleString('ru-RU');
+function fmtDur(ms) {
+  if (ms == null || ms < 0) return '';
+  if (ms < 1000) return ms + ' мс';
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(s < 10 ? 1 : 0) + ' с';
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (h) return `${h} ч ${m % 60} мин`;
+  return `${m} мин ${Math.round(s % 60)} с`;
+}
+const estTokens = s => Math.round(s.length / 3.3);
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('ocv:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('ocv:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+};
+
+let toastTimer;
+function toast(msg, bad = false) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'on' + (bad ? ' bad' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = '', bad ? 4500 : 1800);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast(`Скопировано: ${fmtNum(text.length)} симв. ≈ ${fmtNum(estTokens(text))} ток.`);
+}
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ======================= settings / state ======================= */
+const KINDS = {
+  user:      { label: 'Промпты пользователя', icon: '👤', title: 'Пользователь' },
+  assistant: { label: 'Ответы модели',        icon: '🤖', title: 'Модель' },
+  reasoning: { label: 'Мысли модели',         icon: '💭', title: 'Мысли' },
+  tool:      { label: 'Вызовы инструментов',  icon: '🔧', title: 'Инструмент' },
+  task:      { label: 'Вызовы субагентов',    icon: '🧩', title: 'Субагент' },
+  patch:     { label: 'Изменённые файлы',     icon: '📄', title: 'Изменены файлы' },
+  step:      { label: 'Шаги / токены',        icon: '⏱', title: 'Шаг' },
+  other:     { label: 'Ошибки и прочее',      icon: '⚠', title: 'Событие' },
+};
+const DEFAULTS = {
+  kinds: { user: true, assistant: true, reasoning: true, tool: true, task: true, patch: false, step: false, other: true },
+  hiddenTools: [], showOutput: true, inlineSub: true, markdown: true,
+  problemsOnly: false, ctx: 2,
+  problemRe: 'RESULT:\\s*(?:FAIL|ERROR|NOT_FOUND)|^\\s*ERROR\\b|^Error:|Exception|Traceback',
+  fmt: 'xml', truncate: 60, shortPaths: true, includeHeader: true, includeNotes: true,
+  previewLines: 30, theme: 'auto',
+};
+const S = Object.assign({}, DEFAULTS, store.get('settings', {}));
+S.kinds = Object.assign({}, DEFAULTS.kinds, S.kinds);
+const saveSettings = () => store.set('settings', S);
+
+const R = {
+  sessions: new Map(),     // id -> {id, info, messages, file, blocks, parent, children}
+  order: [],               // load order of session ids
+  cur: null,
+  selected: new Set(),
+  expanded: new Set(),
+  editingNote: null,
+  lastClicked: null,
+  search: '', searchOnly: false, matchIdx: -1,
+  visible: [],
+  notes: store.get('notes', {}),
+};
+const cur = () => R.sessions.get(R.cur);
+let notesTimer;
+const saveNotes = () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => store.set('notes', R.notes), 300); };
+
+/* ======================= loading ======================= */
+async function loadFiles(files) {
+  let added = 0;
+  for (const f of files) {
+    try { addSession(JSON.parse(await f.text()), f.name); added++; }
+    catch (e) { toast(`Не удалось прочитать ${f.name}: ${e.message}`, true); }
+  }
+  if (!added) return;
+  linkSessions();
+  if (!R.cur || !R.sessions.has(R.cur)) R.cur = pickRoot();
+  renderAll(true);
+}
+function addSession(data, file) {
+  if (!data || !data.info || !Array.isArray(data.messages))
+    throw new Error('не похоже на выгрузку opencode (нет info/messages)');
+  const id = data.info.id || file;
+  const s = { id, info: data.info, messages: data.messages, file, parent: data.info.parentID || null, children: new Set() };
+  if (!R.sessions.has(id)) R.order.push(id);
+  R.sessions.set(id, s);
+  buildBlocks(s);
+}
+function linkSessions() {
+  for (const s of R.sessions.values()) s.children = new Set();
+  for (const s of R.sessions.values()) {
+    for (const b of s.blocks) {
+      if (b.kind === 'task' && b.childId && R.sessions.has(b.childId)) {
+        const c = R.sessions.get(b.childId);
+        c.parent = s.id; s.children.add(c.id);
+      }
+    }
+    if (s.parent && R.sessions.has(s.parent)) R.sessions.get(s.parent).children.add(s.id);
+  }
+}
+function pickRoot() {
+  for (const id of R.order) { const s = R.sessions.get(id); if (!s.parent || !R.sessions.has(s.parent)) return id; }
+  return R.order[0] || null;
+}
+function removeSession(id) {
+  R.sessions.delete(id); R.order = R.order.filter(x => x !== id);
+  for (const uid of [...R.selected]) if (uid.startsWith(id + ':')) R.selected.delete(uid);
+  linkSessions();
+  if (R.cur === id) R.cur = pickRoot();
+  renderAll(true);
+}
+
+/* ======================= model ======================= */
+function buildBlocks(s) {
+  const blocks = [];
+  let turn = 0, prevKey = null, prevBlock = null;
+  for (const m of s.messages) {
+    const mi = m.info || {};
+    const role = mi.role;
+    if (role === 'user') { turn++; prevKey = null; prevBlock = null; }
+    for (const p of m.parts || []) {
+      const b = { uid: s.id + ':' + (p.id || Math.random()), sid: s.id, turn, role, p, mi, kind: 'other', flags: [] };
+      switch (p.type) {
+        case 'text':
+          b.text = norm(p.text); if (!b.text.trim()) continue;
+          b.kind = role === 'user' ? 'user' : 'assistant';
+          if (p.synthetic) b.flags.push('synthetic');
+          break;
+        case 'reasoning':
+          b.text = norm(p.text); if (!b.text.trim()) continue;
+          b.kind = 'reasoning';
+          break;
+        case 'tool': {
+          const st = p.state || {};
+          b.tool = p.tool || '?'; b.kind = b.tool === 'task' ? 'task' : 'tool';
+          b.status = st.status; b.exit = st.metadata ? st.metadata.exit : undefined;
+          if (b.kind === 'task')
+            b.childId = (st.metadata && st.metadata.sessionId) || (/<task id="(ses_[^"]+)"/.exec(st.output || '') || [])[1] || null;
+          const key = b.tool + '|' + JSON.stringify(st.input || {});
+          if (key === prevKey && prevBlock) b.repeat = (prevBlock.repeat || 1) + 1;
+          prevKey = key; prevBlock = b;
+          break;
+        }
+        case 'subtask': b.kind = 'task'; b.tool = 'subtask'; break;
+        case 'patch': b.kind = 'patch'; break;
+        case 'step-finish': b.kind = 'step'; break;
+        case 'step-start': continue;
+        default: b.kind = 'other';
+      }
+      blocks.push(b);
+    }
+    if (mi.error) {
+      const e = mi.error;
+      blocks.push({ uid: s.id + ':' + mi.id + ':error', sid: s.id, turn, role, mi, kind: 'other', flags: [],
+        p: { type: 'error', error: e }, text: (e.name || 'Error') + ': ' + ((e.data && e.data.message) || e.message || JSON.stringify(e)) });
+    }
+  }
+  s.blocks = blocks;
+  evalProblems(s);
+}
+function problemRegex() {
+  if (!S.problemRe) return null;
+  try { return new RegExp(S.problemRe, 'mu'); } catch { return null; }
+}
+function evalProblems(s, re = problemRegex()) {
+  for (const b of s.blocks) {
+    let why = null;
+    if (b.p.type === 'error') why = 'ошибка сообщения';
+    else if (b.kind === 'tool' || b.kind === 'task') {
+      const st = b.p.state || {};
+      if (st.status === 'error') why = 'error';
+      else if (b.exit != null && b.exit !== 0) why = 'exit ' + b.exit;
+      else if (re && b.kind === 'tool' && re.test(norm(toolOutput(b)))) why = 'шаблон ошибки';
+      else if (b.repeat) why = 'повтор ×' + b.repeat;
+    }
+    b.problem = !!why; b.why = why;
+  }
+}
+function toolOutput(b) {
+  const st = b.p.state || {};
+  const o = st.output != null ? st.output : (st.metadata && st.metadata.output);
+  return o == null ? '' : (typeof o === 'string' ? o : JSON.stringify(o, null, 2));
+}
+function langOf(path) {
+  const ext = (String(path || '').split('.').pop() || '').toLowerCase();
+  return { bsl: 'bsl', os: 'bsl', xml: 'xml', html: 'xml', mdo: 'xml', json: 'json', ps1: 'sh', sh: 'sh', bat: 'sh', cmd: 'sh', diff: 'diff', patch: 'diff' }[ext] || 'plain';
+}
+function mapLang(l, text = '') {
+  l = String(l || '').toLowerCase();
+  if (/^(bsl|1c|1с|bsl1c|sdbl|query)$/.test(l)) return 'bsl';
+  if (/^(xml|html|svg|xsd)$/.test(l)) return 'xml';
+  if (/^(json|jsonc|json5)$/.test(l)) return 'json';
+  if (/^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console)$/.test(l)) return 'sh';
+  if (/^(diff|patch)$/.test(l)) return 'diff';
+  if (!l) {
+    if (/КонецПроцедуры|КонецФункции|КонецЕсли|КонецЦикла/i.test(text)) return 'bsl';
+    if (/^\s*</.test(text)) return 'xml';
+    if (/^\s*[{[]/.test(text)) return 'json';
+    if (/^(@@|Index: |--- )/m.test(text) && /^[+-]/m.test(text)) return 'diff';
+  }
+  return 'plain';
+}
+
+/* Unified view of a tool call — used by both rendering and export. */
+function toolView(b) {
+  const p = b.p, st = p.state || {}, inp = st.input || {}, md = st.metadata || {};
+  const v = { status: st.status || '', summary: st.title || '', input: [], output: toolOutput(b), outLang: 'plain',
+    outCollapsed: false, error: st.status === 'error' ? norm(st.error || '') : null, todos: null,
+    dur: st.time && st.time.end && st.time.start ? st.time.end - st.time.start : null };
+  const file = (key = 'file') => { if (inp.filePath) v.input.push({ key, label: 'Файл', text: inp.filePath, inline: true }); };
+  switch (b.tool) {
+    case 'bash':
+      v.summary = firstLine(inp.command);
+      if (inp.description) v.input.push({ key: 'description', label: 'Описание', text: inp.description, inline: true });
+      v.input.push({ key: 'command', label: 'Команда', text: norm(inp.command), lang: 'sh' });
+      break;
+    case 'read':
+      v.summary = baseName(inp.filePath); file();
+      if (inp.offset != null || inp.limit != null)
+        v.input.push({ key: 'range', label: 'Диапазон', text: `offset=${inp.offset ?? 0} limit=${inp.limit ?? ''}`, inline: true });
+      v.outLang = langOf(inp.filePath); v.outCollapsed = true;
+      break;
+    case 'write':
+      v.summary = baseName(inp.filePath); file();
+      v.input.push({ key: 'content', label: 'Содержимое', text: norm(inp.content), lang: langOf(inp.filePath), collapsed: true, long: true });
+      break;
+    case 'edit':
+      v.summary = baseName(inp.filePath); file();
+      if (md.diff) v.input.push({ key: 'diff', label: 'Diff', text: norm(md.diff), lang: 'diff', long: true });
+      else {
+        v.input.push({ key: 'old', label: 'Было', text: norm(inp.oldString), lang: langOf(inp.filePath), long: true });
+        v.input.push({ key: 'new', label: 'Стало', text: norm(inp.newString), lang: langOf(inp.filePath), long: true });
+      }
+      if (inp.replaceAll) v.input.push({ key: 'replace_all', label: 'replaceAll', text: 'true', inline: true });
+      break;
+    case 'grep': case 'glob': case 'list':
+      v.summary = inp.pattern || inp.path || '';
+      for (const k of ['pattern', 'path', 'include']) if (inp[k]) v.input.push({ key: k, label: k, text: String(inp[k]), inline: true });
+      v.outCollapsed = true;
+      break;
+    case 'todowrite': case 'todoread':
+      v.todos = inp.todos || md.todos || null; v.output = ''; v.summary = v.todos ? `${v.todos.length} задач` : '';
+      break;
+    case 'skill':
+      v.summary = inp.name || ''; v.input.push({ key: 'name', label: 'Скилл', text: inp.name || '', inline: true });
+      v.outCollapsed = true; v.outLang = 'markdown';
+      break;
+    case 'webfetch':
+      v.summary = inp.url || ''; v.input.push({ key: 'url', label: 'URL', text: inp.url || '', inline: true });
+      v.outCollapsed = true;
+      break;
+    default:
+      if (Object.keys(inp).length) v.input.push({ key: 'input', label: 'Параметры', text: JSON.stringify(inp, null, 2), lang: 'json', long: true });
+  }
+  if (v.outLang === 'plain') v.outLang = mapLang('', v.output);
+  return v;
+}
+function taskView(b) {
+  const p = b.p, st = p.state || {}, inp = st.input || p;
+  let result = norm(toolOutput(b));
+  const m = /<task_result>([\s\S]*?)<\/task_result>/.exec(result);
+  if (m) result = m[1];
+  return { type: inp.subagent_type || inp.agent || p.agent || '', description: inp.description || '',
+    prompt: norm(inp.prompt || ''), result: result.trim(), status: st.status || '',
+    error: st.status === 'error' ? norm(st.error || '') : null, childId: b.childId,
+    dur: st.time && st.time.end && st.time.start ? st.time.end - st.time.start : null };
+}
+function searchText(b) {
+  if (b._s == null) {
+    b._s = (b.text || '') + '\n' + (b.p.state ? JSON.stringify(b.p.state.input || '') + '\n' + toolOutput(b) + '\n' + (b.p.state.error || '') : '')
+      + (b.p.files ? b.p.files.join('\n') : '');
+    b._s = b._s.toLowerCase();
+  }
+  return b._s;
+}
+const matches = b => R.search && searchText(b).includes(R.search);
+
+/* ======================= visible list ======================= */
+const passKind = b => S.kinds[b.kind] && !(b.kind === 'tool' && S.hiddenTools.includes(b.tool));
+function computeVisible() {
+  const s = cur(); if (!s) return [];
+  const all = [], seen = new Set([s.id]);
+  const walk = (sess, depth, rootTurn) => {
+    for (const b of sess.blocks) {
+      const rt = depth ? rootTurn : b.turn;
+      all.push({ b, depth, rootTurn: rt });
+      if (b.kind === 'task' && S.inlineSub && b.childId && R.sessions.has(b.childId) && !seen.has(b.childId)) {
+        seen.add(b.childId); walk(R.sessions.get(b.childId), depth + 1, rt);
+      }
+    }
+  };
+  walk(s, 0, 0);
+  let list = all.filter(x => passKind(x.b));
+  if (S.problemsOnly) {
+    const keep = new Set(), c = Math.max(0, S.ctx | 0);
+    list.forEach((x, i) => { if (x.b.problem) for (let j = Math.max(0, i - c); j <= Math.min(list.length - 1, i + c); j++) keep.add(j); });
+    let prev = -1; const out = [];
+    list.forEach((x, i) => { if (keep.has(i)) { if (i - prev > 1) x.gap = i - prev - 1; prev = i; out.push(x); } });
+    list = out;
+  }
+  if (R.search && R.searchOnly) list = list.filter(x => matches(x.b));
+  return list;
+}
+
+/* ======================= highlighting ======================= */
+const W = '[\\p{L}\\p{N}_]';
+const BSL_KW = 'Если|Тогда|ИначеЕсли|Иначе|КонецЕсли|Для|Каждого|Из|По|Цикл|КонецЦикла|Пока|Процедура|КонецПроцедуры|Функция|КонецФункции|Возврат|Перем|Экспорт|Знач|Попытка|Исключение|КонецПопытки|ВызватьИсключение|Новый|И|Или|Не|Истина|Ложь|Неопределено|NULL|Продолжить|Прервать|Выполнить|Асинх|Ждать|ВЫБРАТЬ|РАЗЛИЧНЫЕ|ПЕРВЫЕ|ГДЕ|КАК|ЛЕВОЕ|ПРАВОЕ|ВНУТРЕННЕЕ|ПОЛНОЕ|СОЕДИНЕНИЕ|ПОМЕСТИТЬ|УПОРЯДОЧИТЬ|СГРУППИРОВАТЬ|ОБЪЕДИНИТЬ|ВСЕ|ИМЕЮЩИЕ|ВЫБОР|КОГДА|ИНАЧЕ|КОНЕЦ|If|Then|ElsIf|Else|EndIf|For|Each|In|To|Do|EndDo|While|Procedure|EndProcedure|Function|EndFunction|Return|Var|Export|Val|Try|Except|EndTry|Raise|New|And|Or|Not|True|False|Undefined';
+const LANG = {
+  bsl: [
+    ['//[^\\n]*', 'c-com'],
+    ['"(?:[^"\\n]|"")*"?', 'c-str'],
+    ['(?:^|(?<=\\s))[&#]\\p{L}+', 'c-meta'],
+    [`(?<!${W})\\d+(?:\\.\\d+)?(?!${W})`, 'c-num'],
+    [`(?<!${W})(?:${BSL_KW})(?!${W})`, 'c-kw'],
+  ],
+  xml: [
+    ['<!--[\\s\\S]*?-->', 'c-com'],
+    ['<\\?[\\s\\S]*?\\?>', 'c-meta'],
+    ['</?[\\p{L}\\w:.-]+', 'c-tag'],
+    ['/?>', 'c-tag'],
+    ['[\\p{L}\\w:.-]+(?==")', 'c-attr'],
+    ['"[^"\\n]*"', 'c-str'],
+  ],
+  json: [
+    ['"(?:[^"\\\\\\n]|\\\\.)*"(?=\\s*:)', 'c-attr'],
+    ['"(?:[^"\\\\\\n]|\\\\.)*"', 'c-str'],
+    ['(?<![\\w.])-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?(?![\\w.])', 'c-num'],
+    ['\\b(?:true|false|null)\\b', 'c-kw'],
+  ],
+  sh: [
+    ['(?:^|(?<=\\s))#[^\\n]*', 'c-com'],
+    ['"(?:[^"\\\\]|\\\\.)*"|\'[^\']*\'', 'c-str'],
+    ['\\$\\{[^}]*\\}|\\$[\\w:]+', 'c-meta'],
+    ['(?<=\\s)--?[\\w-]+', 'c-attr'],
+    ['(?<=^|[|;&]\\s*)[\\w.\\\\/:-]+', 'c-kw'],
+  ],
+  diff: [
+    ['^(?:Index:|={3,}|\\+\\+\\+ |--- )[^\\n]*', 'c-meta'],
+    ['^@@[^\\n]*', 'c-hunk'],
+    ['^\\+[^\\n]*', 'c-add'],
+    ['^-[^\\n]*', 'c-del'],
+  ],
+};
+for (const k in LANG) {
+  try { LANG[k].re = new RegExp(LANG[k].map(r => '(' + r[0] + ')').join('|'), 'gmiu'); }
+  catch (e) { console.warn('highlight rules', k, e); delete LANG[k]; }
+}
+function highlight(text, lang) {
+  text = String(text ?? '');
+  const rules = LANG[lang];
+  if (!rules || text.length > 400000) return esc(text);
+  const re = rules.re; re.lastIndex = 0;
+  let out = '', last = 0, m;
+  while ((m = re.exec(text))) {
+    if (!m[0]) { re.lastIndex++; continue; }
+    let gi = 1; while (m[gi] === undefined) gi++;
+    out += esc(text.slice(last, m.index)) + `<span class="${rules[gi - 1][1]}">${esc(m[0])}</span>`;
+    last = re.lastIndex;
+  }
+  return out + esc(text.slice(last));
+}
+
+/* ======================= markdown ======================= */
+function inline(t) {
+  const keep = [];
+  let s = esc(t).replace(/`([^`]+)`/g, (_, c) => { keep.push(`<code>${c}</code>`); return `\u0000${keep.length - 1}\u0000`; });
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+       .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
+       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[+i]);
+}
+const LIST_RE = /^\s*([-*+]|\d+[.)])\s+/;
+function md(src) {
+  const lines = norm(src).split('\n');
+  let html = '', i = 0;
+  const para = [];
+  const flush = () => { if (para.length) { html += '<p>' + para.map(inline).join('<br>') + '</p>'; para.length = 0; } };
+  while (i < lines.length) {
+    const l = lines[i];
+    let m;
+    if ((m = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/.exec(l))) {
+      flush();
+      const fence = m[1], buf = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence)) buf.push(lines[i++]);
+      i++;
+      const code = buf.join('\n');
+      html += `<pre class="code">${highlight(code, mapLang(m[2], code))}</pre>`;
+      continue;
+    }
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) {
+      flush(); const lv = Math.min(6, m[1].length + 2);
+      html += `<h${lv} class="mdh">${inline(m[2])}</h${lv}>`; i++; continue;
+    }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); html += '<hr>'; i++; continue; }
+    if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      flush();
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      html += '<div class="tblwrap"><table><thead><tr>' + cells(rows[0]).map(c => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>'
+        + rows.slice(2).map(r => '<tr>' + cells(r).map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+      continue;
+    }
+    if (/^\s*>/.test(l)) {
+      flush(); const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      html += '<blockquote>' + md(buf.join('\n')) + '</blockquote>'; continue;
+    }
+    if (LIST_RE.test(l)) {
+      flush();
+      const ordered = /^\s*\d/.test(l), items = [];
+      while (i < lines.length && LIST_RE.test(lines[i])) {
+        items.push({ ind: lines[i].match(/^\s*/)[0].length, t: lines[i].replace(LIST_RE, '') }); i++;
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !LIST_RE.test(lines[i])) items[items.length - 1].t += '\n' + lines[i++].trim();
+      }
+      const tag = ordered ? 'ol' : 'ul';
+      html += `<${tag}>` + items.map(it => `<li style="margin-left:${Math.min(it.ind, 12) * 0.5}em">${inline(it.t).replace(/\n/g, '<br>')}</li>`).join('') + `</${tag}>`;
+      continue;
+    }
+    if (!l.trim()) { flush(); i++; continue; }
+    para.push(l); i++;
+  }
+  flush();
+  return html;
+}
+const textHtml = t => S.markdown ? `<div class="md">${md(t)}</div>` : `<div class="raw">${esc(t)}</div>`;
+
+/* ======================= rendering ======================= */
+function longHtml(text, key, lang, collapsed = false) {
+  text = norm(text).replace(/\s+$/, '');
+  if (!text) return '';
+  const lines = text.split('\n'), lim = S.previewLines;
+  const open = R.expanded.has(key) || (R.search && text.toLowerCase().includes(R.search));
+  const k = esc(key);
+  if (collapsed && !open)
+    return `<button class="expander" data-key="${k}">▸ показать (${fmtNum(lines.length)} строк)</button>`;
+  if (open || lines.length <= lim + 5)
+    return `<pre class="code">${highlight(text, lang)}</pre>` + ((collapsed || lines.length > lim + 5) && R.expanded.has(key) ? `<button class="expander" data-key="${k}">▴ свернуть</button>` : '');
+  return `<pre class="code">${highlight(lines.slice(0, lim).join('\n'), lang)}</pre><button class="expander" data-key="${k}">▾ ещё ${fmtNum(lines.length - lim)} строк</button>`;
+}
+function longMd(text, key) {
+  const lines = norm(text).split('\n'), lim = S.previewLines * 2;
+  const open = R.expanded.has(key) || (R.search && text.toLowerCase().includes(R.search));
+  if (open || lines.length <= lim + 5)
+    return textHtml(text) + (lines.length > lim + 5 && R.expanded.has(key) ? `<button class="expander" data-key="${esc(key)}">▴ свернуть</button>` : '');
+  return textHtml(lines.slice(0, lim).join('\n')) + `<button class="expander" data-key="${esc(key)}">▾ ещё ${fmtNum(lines.length - lim)} строк</button>`;
+}
+function blockTitle(b) {
+  switch (b.kind) {
+    case 'user': return 'Пользователь' + (b.flags.includes('synthetic') ? ' (служебное)' : '');
+    case 'tool': return b.tool;
+    case 'task': { const t = taskView(b); return 'Субагент' + (t.type ? ': ' + t.type : ''); }
+    case 'other': return b.p.type === 'error' ? 'Ошибка' : b.p.type;
+    default: return KINDS[b.kind].title;
+  }
+}
+function blockMeta(b) {
+  const out = [];
+  const time = (b.p.time && b.p.time.start) || (b.p.state && b.p.state.time && b.p.state.time.start) || (b.mi && b.mi.time && b.mi.time.created);
+  if (b.kind === 'tool') {
+    const v = toolView(b);
+    if (v.summary) out.push(`<span class="sum" title="${attr(v.summary)}">${esc(v.summary)}</span>`);
+    if (v.status && v.status !== 'completed') out.push(`<span class="badge err">${esc(v.status)}</span>`);
+    if (b.exit != null) out.push(`<span class="badge ${b.exit === 0 ? 'ok' : 'err'}">exit ${esc(b.exit)}</span>`);
+    if (v.dur != null) out.push(`<span class="badge">${fmtDur(v.dur)}</span>`);
+  } else if (b.kind === 'task') {
+    const t = taskView(b);
+    if (t.description) out.push(`<span class="sum" title="${attr(t.description)}">${esc(t.description)}</span>`);
+    if (t.status && t.status !== 'completed') out.push(`<span class="badge err">${esc(t.status)}</span>`);
+    if (t.dur != null) out.push(`<span class="badge">${fmtDur(t.dur)}</span>`);
+  } else if (b.kind === 'step') {
+    const tk = b.p.tokens || {};
+    out.push(`<span class="badge">${esc(b.p.reason || '')}</span><span class="badge">вход ${fmtNum(tk.input)} · выход ${fmtNum(tk.output)}${tk.reasoning ? ' · мысли ' + fmtNum(tk.reasoning) : ''}</span>`);
+  } else if (b.kind === 'patch') {
+    out.push(`<span class="badge">${(b.p.files || []).length} файл(ов)</span>`);
+  }
+  if (b.problem && b.why && !/^(error|exit)/.test(b.why)) out.push(`<span class="badge warn">${esc(b.why)}</span>`);
+  if (time) out.push(`<span class="badge" title="${attr(fmtDate(time))}">${fmtTime(time)}</span>`);
+  return out.join('');
+}
+function toolBody(b) {
+  const v = toolView(b), uid = b.uid;
+  let h = '';
+  for (const it of v.input) {
+    if (it.inline) h += `<div class="kv"><b>${esc(it.label)}:</b> <code>${esc(it.text)}</code></div>`;
+    else h += `<div class="lbl">${esc(it.label)}</div>` + longHtml(it.text, uid + ':in:' + it.key, it.lang || 'plain', !!it.collapsed);
+  }
+  if (v.todos) {
+    const ic = { completed: '☑', in_progress: '◐', pending: '☐', cancelled: '☒' };
+    h += '<ul class="todo">' + v.todos.map(t => `<li class="${t.status === 'completed' ? 'done' : ''}">${ic[t.status] || '•'} ${esc(t.content)}${t.priority ? ` <span class="badge">${esc(t.priority)}</span>` : ''}</li>`).join('') + '</ul>';
+  }
+  if (S.showOutput && v.output && v.output.trim())
+    h += `<div class="lbl">Вывод</div>` + longHtml(v.output, uid + ':out', v.outLang, v.outCollapsed && !b.problem);
+  if (v.error) h += `<div class="errbox">${esc(v.error)}</div>`;
+  return h;
+}
+function taskBody(b) {
+  const t = taskView(b);
+  let h = '';
+  if (t.prompt) h += `<div class="lbl">Промпт субагенту</div>` + longMd(t.prompt, b.uid + ':prompt');
+  if (S.showOutput && t.result) h += `<div class="lbl">Результат</div>` + longMd(t.result, b.uid + ':result');
+  if (t.error) h += `<div class="errbox">${esc(t.error)}</div>`;
+  if (t.childId) {
+    const child = R.sessions.get(t.childId);
+    if (child) {
+      const n = child.blocks.length;
+      h += `<div class="hintbox">↳ Сессия субагента загружена (${n} блоков)${S.inlineSub ? ', встроена ниже' : ''}.
+        <button data-act="open-session" data-sid="${esc(t.childId)}">Открыть отдельно</button></div>`;
+    } else {
+      const cmd = `opencode export ${t.childId} > ${t.childId}.json`;
+      h += `<div class="hintbox">Сессия субагента <code>${esc(t.childId)}</code> не загружена. Выгрузите её:
+        <code>${esc(cmd)}</code> <button data-act="copy-str" data-str="${attr(cmd)}" title="Копировать команду">⧉</button></div>`;
+    }
+  }
+  return h;
+}
+function shortPath(p) {
+  const s = cur(); const dir = s && s.info.directory;
+  if (dir && String(p).toLowerCase().replace(/\\/g, '/').startsWith(dir.toLowerCase().replace(/\\/g, '/')))
+    return '.' + String(p).slice(dir.length);
+  return p;
+}
+function blockBody(b) {
+  switch (b.kind) {
+    case 'user': case 'assistant': return textHtml(b.text);
+    case 'reasoning': return longMd(b.text, b.uid + ':r');
+    case 'tool': return toolBody(b);
+    case 'task': return taskBody(b);
+    case 'patch': return '<div style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px">' + (b.p.files || []).map(f => esc(shortPath(f))).join('<br>') + '</div>';
+    case 'step': return '';
+    default: {
+      if (b.p.type === 'error') return `<div class="errbox">${esc(b.text)}</div>`;
+      return longHtml(JSON.stringify(stripIds(b.p), null, 2), b.uid + ':j', 'json');
+    }
+  }
+}
+function stripIds(p) { const o = Object.assign({}, p); delete o.id; delete o.sessionID; delete o.messageID; return o; }
+function noteHtml(b) {
+  const n = R.notes[b.uid];
+  if (n == null && R.editingNote !== b.uid) return '';
+  return `<div class="note"><label>📝 Заметка (попадает в выгрузку)</label><textarea data-uid="${esc(b.uid)}" placeholder="Что здесь важно: где ошиблась модель, чего ей не хватало…">${esc(n || '')}</textarea></div>`;
+}
+function blockHtml(x) {
+  const b = x.b, sel = R.selected.has(b.uid);
+  const cls = ['blk', 'k-' + b.kind];
+  if (sel) cls.push('sel'); if (b.problem) cls.push('prob'); if (x.depth) cls.push('sub');
+  const style = x.depth ? ` style="margin-left:${Math.min(x.depth, 4) * 22}px"` : '';
+  return `<article class="${cls.join(' ')}" data-uid="${esc(b.uid)}"${style}>
+<header class="bh"><input type="checkbox" class="sel-cb" ${sel ? 'checked' : ''} title="Выбрать (Shift — диапазон)">
+<span class="kt">${KINDS[b.kind].icon} ${esc(blockTitle(b))}</span>${blockMeta(b)}<span class="sp"></span>
+<button class="ib" data-act="note" title="Заметка">✎</button><button class="ib" data-act="copy" title="Копировать блок">⧉</button></header>
+<div class="bb">${blockBody(b)}</div>${noteHtml(b)}</article>`;
+}
+function sessionHeadHtml(s) {
+  const i = s.info, tk = i.tokens || {}, t = i.time || {};
+  const model = i.model ? [i.model.providerID, i.model.id].filter(Boolean).join(':') : '';
+  const parent = s.parent && R.sessions.get(s.parent);
+  const links = [];
+  if (parent) links.push(`<button data-act="open-session" data-sid="${esc(parent.id)}">↑ Родительская: ${esc(parent.info.title || parent.id)}</button>`);
+  for (const c of s.children) { const cs = R.sessions.get(c); links.push(`<button data-act="open-session" data-sid="${esc(c)}">↳ ${esc(cs.info.title || c)}</button>`); }
+  return `<section class="sess-head"><h1>${esc(i.title || s.id)}</h1><div class="meta">
+<span>${esc(s.id)}</span>${i.agent ? `<span>агент: ${esc(i.agent)}</span>` : ''}${model ? `<span>модель: ${esc(model)}</span>` : ''}
+${i.directory ? `<span>${esc(i.directory)}</span>` : ''}<span>${fmtDate(t.created)} → ${fmtDate(t.updated)}</span>
+<span>токены: вход ${fmtNum(tk.input)} · выход ${fmtNum(tk.output)}</span>${i.version ? `<span>opencode ${esc(i.version)}</span>` : ''}
+</div>${links.length ? `<div class="links">${links.join('')}</div>` : ''}</section>`;
+}
+function emptyHtml() {
+  return `<div class="empty"><div class="drop"><h2>Перетащите сюда выгрузку сессии opencode</h2>
+<p>или нажмите «Открыть файлы…». Можно сразу несколько файлов: основную сессию и сессии субагентов.</p>
+<p>Выгрузка: <code>opencode export &lt;session-id&gt; &gt; session.json</code></p>
+<p class="hint">Файлы обрабатываются локально в браузере и никуда не отправляются.</p></div></div>`;
+}
+function renderTimeline() {
+  const tl = $('#timeline'), s = cur();
+  if (!s) { tl.innerHTML = emptyHtml(); R.visible = []; updateSelBar(); return; }
+  const list = computeVisible(); R.visible = list;
+  const html = [sessionHeadHtml(s)];
+  let lastTurn = null, lastSub = null;
+  for (const x of list) {
+    if (x.gap) html.push(`<div class="gap">⋯ скрыто блоков: ${x.gap} ⋯</div>`);
+    if (x.rootTurn !== lastTurn && x.rootTurn > 0) {
+      lastTurn = x.rootTurn;
+      const start = s.blocks.find(b => b.turn === x.rootTurn);
+      const tm = start && start.mi && start.mi.time ? fmtDate(start.mi.time.created) : '';
+      html.push(`<div class="turn" id="turn-${x.rootTurn}" data-turn="${x.rootTurn}">Ход ${x.rootTurn}<span class="tm">${tm}</span><button data-act="sel-turn" data-turn="${x.rootTurn}">выбрать ход</button></div>`);
+      lastSub = null;
+    }
+    if (x.depth > 0 && x.b.sid !== lastSub) {
+      const cs = R.sessions.get(x.b.sid);
+      html.push(`<div class="subhead" style="margin-left:${Math.min(x.depth, 4) * 22}px">↳ Сессия субагента: ${esc(cs.info.title || cs.id)} <span style="color:var(--muted)">(${esc(cs.id)})</span></div>`);
+    }
+    lastSub = x.depth > 0 ? x.b.sid : null;
+    html.push(blockHtml(x));
+  }
+  if (!list.length) html.push('<div class="empty">Нет блоков под текущие фильтры.</div>');
+  tl.innerHTML = html.join('');
+  applySearchHighlight();
+  updateSelBar();
+}
+function rerenderBlock(uid) {
+  const x = R.visible.find(v => v.b.uid === uid);
+  const el = $(`article[data-uid="${CSS.escape(uid)}"]`);
+  if (!x || !el) return;
+  el.outerHTML = blockHtml(x);
+  applySearchHighlight();
+}
+function withAnchor(fn) {
+  const main = $('#main');
+  let anchor = null, off = 0;
+  for (const el of $$('#timeline article.blk')) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > main.getBoundingClientRect().top + 40) { anchor = el.dataset.uid; off = r.top; break; }
+  }
+  fn();
+  if (anchor) {
+    const el = $(`article[data-uid="${CSS.escape(anchor)}"]`);
+    if (el) main.scrollTop += el.getBoundingClientRect().top - off;
+  }
+}
+
+/* ---------- sidebar ---------- */
+function countKinds(s) {
+  const c = {}, tools = {}, toolErr = {};
+  for (const k in KINDS) c[k] = 0;
+  if (s) for (const b of s.blocks) {
+    c[b.kind]++;
+    if (b.kind === 'tool') { tools[b.tool] = (tools[b.tool] || 0) + 1; if (b.problem) toolErr[b.tool] = (toolErr[b.tool] || 0) + 1; }
+  }
+  return { c, tools, toolErr };
+}
+function renderSidebar() {
+  const s = cur(), { c, tools, toolErr } = countKinds(s);
+  $('#kindFilters').innerHTML = Object.entries(KINDS).map(([k, v]) =>
+    `<div class="row"><label><input type="checkbox" data-kind="${k}" ${S.kinds[k] ? 'checked' : ''}><span class="dot" style="background:var(--c-${k})"></span>${v.icon} ${v.label}</label><span class="cnt">${c[k] || ''}</span></div>`).join('');
+  $('#toolChips').innerHTML = Object.keys(tools).sort((a, b) => tools[b] - tools[a]).map(t =>
+    `<span class="chip ${S.hiddenTools.includes(t) ? '' : 'on'}" data-tool="${esc(t)}">${esc(t)} ${tools[t]}${toolErr[t] ? ` <span class="chip err" style="border:0;padding:0">✗${toolErr[t]}</span>` : ''}</span>`).join('') || '<span class="hint">нет</span>';
+  const probs = s ? s.blocks.filter(b => b.problem).length : 0;
+  $('#probInfo').textContent = s ? `Найдено проблемных блоков: ${probs}` : '';
+
+  const roots = R.order.filter(id => { const x = R.sessions.get(id); return !x.parent || !R.sessions.has(x.parent); });
+  const row = (id, depth) => {
+    const x = R.sessions.get(id);
+    return `<div class="sess ${id === R.cur ? 'cur' : ''}" data-sid="${esc(id)}" style="margin-left:${depth * 14}px">
+<span class="t">${depth ? '↳ ' : ''}${esc(x.info.title || id)}<small>${esc(x.file)} · ${x.messages.length} сообщ.</small></span>
+<button data-act="remove-session" data-sid="${esc(id)}" title="Убрать из просмотра">×</button></div>`
+      + [...x.children].map(cid => row(cid, depth + 1)).join('');
+  };
+  $('#sessions').innerHTML = roots.map(id => row(id, 0)).join('') || '<span class="hint">Ничего не загружено</span>';
+
+  if (s) {
+    const turns = new Map();
+    for (const b of s.blocks) {
+      if (!turns.has(b.turn)) turns.set(b.turn, { text: '', probs: 0 });
+      const t = turns.get(b.turn);
+      if (b.kind === 'user' && !t.text && !b.flags.includes('synthetic')) t.text = firstLine(b.text);
+      if (b.problem) t.probs++;
+    }
+    $('#toc').innerHTML = [...turns].filter(([n]) => n > 0).map(([n, t]) =>
+      `<a href="#turn-${n}" data-turn="${n}" title="${attr(t.text)}"><span class="n">${n}.</span><span class="t">${esc(t.text || '—')}</span>${t.probs ? `<span class="chip err" style="border:0">✗${t.probs}</span>` : ''}</a>`).join('');
+    const i = s.info, tk = i.tokens || {};
+    const exitBad = s.blocks.filter(b => b.exit != null && b.exit !== 0).length;
+    const rows = [
+      ['Сообщений', s.messages.length], ['Ходов пользователя', turns.size - (turns.has(0) ? 1 : 0)],
+      ...Object.entries(KINDS).map(([k, v]) => [v.label, c[k]]),
+      ['Проблемных блоков', probs], ['bash с exit ≠ 0', exitBad],
+      ['Токены: вход', fmtNum(tk.input)], ['Токены: выход', fmtNum(tk.output)],
+      ['Длительность', fmtDur((i.time && i.time.updated - i.time.created) || 0)],
+    ];
+    $('#stats').innerHTML = '<table>' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('') + '</table>';
+  } else { $('#toc').innerHTML = ''; $('#stats').innerHTML = ''; }
+}
+function syncControls() {
+  $('#optOutput').checked = S.showOutput; $('#optInline').checked = S.inlineSub; $('#optMarkdown').checked = S.markdown;
+  $('#optProblems').checked = S.problemsOnly; $('#optCtx').value = S.ctx; $('#problemRe').value = S.problemRe;
+  $('#optFmt').value = S.fmt; $('#optTrunc').value = S.truncate; $('#optShort').checked = S.shortPaths;
+  $('#optHeader').checked = S.includeHeader; $('#optNotes').checked = S.includeNotes;
+  $('#themeBtn').textContent = { auto: '◐ авто', light: '☀ светлая', dark: '☾ тёмная' }[S.theme];
+  if (S.theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme = S.theme;
+}
+function renderAll(resetScroll = false) {
+  syncControls(); renderSidebar();
+  if (resetScroll) { renderTimeline(); $('#main').scrollTop = 0; }
+  else withAnchor(renderTimeline);
+}
+function updateSelBar() {
+  const vis = R.visible.filter(x => R.selected.has(x.b.uid)).length;
+  const hidden = R.selected.size - vis;
+  $('#selInfo').textContent = R.selected.size
+    ? `Выбрано: ${vis}${hidden ? ` (+${hidden} скрыто фильтрами, не попадут в выгрузку)` : ''} · видимых блоков: ${R.visible.length}`
+    : `Ничего не выбрано → копируются все видимые (${R.visible.length})`;
+  $('#copyBtn').textContent = vis ? `Копировать выбранное (${vis})` : 'Копировать всё видимое';
+}
+
+/* ======================= search ======================= */
+function applySearchHighlight() {
+  if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
+  CSS.highlights.delete('ocv-search');
+  if (!R.search) return;
+  const ranges = [], q = R.search;
+  const walker = document.createTreeWalker($('#timeline'), NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode()) && ranges.length < 5000) {
+    const t = n.nodeValue.toLowerCase();
+    for (let i = t.indexOf(q); i >= 0 && ranges.length < 5000; i = t.indexOf(q, i + q.length)) {
+      const r = new Range(); r.setStart(n, i); r.setEnd(n, i + q.length); ranges.push(r);
+    }
+  }
+  CSS.highlights.set('ocv-search', new Highlight(...ranges));
+}
+function searchMatches() { return R.search ? R.visible.filter(x => matches(x.b)) : []; }
+function updateSearchCount() {
+  const m = searchMatches();
+  $('#searchCount').textContent = R.search ? `${R.matchIdx >= 0 ? R.matchIdx + 1 : 0}/${m.length}` : '';
+}
+function gotoMatch(dir) {
+  const m = searchMatches(); if (!m.length) return;
+  R.matchIdx = (R.matchIdx + dir + m.length) % m.length;
+  $$('.cur-match').forEach(e => e.classList.remove('cur-match'));
+  const el = $(`article[data-uid="${CSS.escape(m[R.matchIdx].b.uid)}"]`);
+  if (el) { el.classList.add('cur-match'); el.scrollIntoView({ block: 'start' }); }
+  updateSearchCount();
+}
+
+/* ======================= export ======================= */
+function trunc(text) {
+  text = norm(text).replace(/\s+$/, '');
+  const N = S.truncate | 0;
+  if (N <= 0) return text;
+  let lines = text.split('\n').map(l => l.length > 500 ? l.slice(0, 500) + ` …[+${l.length - 500} симв.]` : l);
+  if (lines.length > N) {
+    const head = Math.max(1, Math.round(N * 0.4)), tail = N - head;
+    lines = [...lines.slice(0, head), `… [пропущено ${lines.length - N} из ${lines.length} строк] …`, ...lines.slice(lines.length - tail)];
+  }
+  return lines.join('\n');
+}
+function fence(text, lang = '') {
+  const runs = String(text).match(/`+/g) || [];
+  const n = Math.max(3, ...runs.map(r => r.length + 1));
+  return '`'.repeat(n) + (lang && lang !== 'plain' ? lang : '') + '\n' + text + '\n' + '`'.repeat(n);
+}
+const quote = t => t.trim().split('\n').map(l => '> ' + l).join('\n');
+function shortenPaths(text) {
+  const dirs = new Set();
+  for (const s of R.sessions.values()) if (s.info.directory) dirs.add(s.info.directory);
+  for (const d of [...dirs].sort((a, b) => b.length - a.length)) {
+    for (const v of new Set([d, d.replace(/\\/g, '/'), d.replace(/\//g, '\\')])) {
+      const re = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}_-])', 'giu');
+      text = text.replace(re, '.');
+    }
+  }
+  return text;
+}
+function headerOf(s, X) {
+  const i = s.info, model = i.model ? [i.model.providerID, i.model.id].filter(Boolean).join(':') : '';
+  if (X) return `<session id="${attr(s.id)}" title="${attr(i.title)}" agent="${attr(i.agent)}" model="${attr(model)}" directory="${attr(i.directory)}" created="${attr(fmtDate(i.time && i.time.created))}">`;
+  return `# Сессия opencode: ${i.title || s.id}\n\n- id: \`${s.id}\`\n- агент: ${i.agent || '—'}, модель: ${model || '—'}\n- каталог: \`${i.directory || ''}\`\n- создана: ${fmtDate(i.time && i.time.created)}`;
+}
+function blockXml(b) {
+  const T = s => S.shortPaths ? shortenPaths(s) : s;
+  switch (b.kind) {
+    case 'user': return `<user turn="${b.turn}"${b.flags.includes('synthetic') ? ' synthetic="true"' : ''}>\n${b.text.trim()}\n</user>`;
+    case 'assistant': return `<assistant>\n${b.text.trim()}\n</assistant>`;
+    case 'reasoning': return `<thinking>\n${b.text.trim()}\n</thinking>`;
+    case 'tool': {
+      const v = toolView(b), a = [`name="${attr(b.tool)}"`, `status="${attr(v.status)}"`];
+      if (b.exit != null && b.exit !== 0) a.push(`exit="${b.exit}"`);
+      if (b.repeat) a.push(`repeat="${b.repeat}"`);
+      if (b.problem && b.why === 'шаблон ошибки') a.push('problem="true"');
+      let s = `<tool ${a.join(' ')}>`;
+      for (const it of v.input) s += it.inline ? `\n<${it.key}>${T(it.text)}</${it.key}>` : `\n<${it.key}>\n${T(it.long || it.collapsed ? trunc(it.text) : it.text)}\n</${it.key}>`;
+      if (v.todos) s += '\n<todos>\n' + v.todos.map(t => `[${t.status}] ${t.content}`).join('\n') + '\n</todos>';
+      if (S.showOutput && v.output && v.output.trim()) s += `\n<output>\n${T(trunc(v.output))}\n</output>`;
+      if (v.error) s += `\n<error>\n${v.error}\n</error>`;
+      return s + '\n</tool>';
+    }
+    case 'task': {
+      const t = taskView(b);
+      let s = `<subagent type="${attr(t.type)}" description="${attr(t.description)}" status="${attr(t.status)}"${t.childId ? ` session="${attr(t.childId)}"` : ''}>`;
+      if (t.prompt) s += `\n<prompt>\n${T(t.prompt.trim())}\n</prompt>`;
+      if (S.showOutput && t.result) s += `\n<result>\n${T(t.result)}\n</result>`;
+      if (t.error) s += `\n<error>\n${t.error}\n</error>`;
+      return s + '\n</subagent>';
+    }
+    case 'patch': return `<files_changed>\n${T((b.p.files || []).join('\n'))}\n</files_changed>`;
+    case 'step': { const tk = b.p.tokens || {}; return `<step reason="${attr(b.p.reason)}" tokens_in="${tk.input ?? ''}" tokens_out="${tk.output ?? ''}"/>`; }
+    default:
+      if (b.p.type === 'error') return `<error>\n${b.text}\n</error>`;
+      return `<event type="${attr(b.p.type)}">\n${trunc(JSON.stringify(stripIds(b.p), null, 2))}\n</event>`;
+  }
+}
+function blockMd(b) {
+  const T = s => S.shortPaths ? shortenPaths(s) : s;
+  switch (b.kind) {
+    case 'user': return `### 👤 Пользователь · ход ${b.turn}${b.flags.includes('synthetic') ? ' (служебное)' : ''}\n\n${b.text.trim()}`;
+    case 'assistant': return `### 🤖 Модель\n\n${b.text.trim()}`;
+    case 'reasoning': return `### 💭 Мысли модели\n\n${quote(b.text)}`;
+    case 'tool': {
+      const v = toolView(b);
+      let s = `### 🔧 ${b.tool}${v.status && v.status !== 'completed' ? ' · ❌ ' + v.status : ''}${b.exit != null && b.exit !== 0 ? ' · ❌ exit ' + b.exit : ''}${b.repeat ? ' · повтор ×' + b.repeat : ''}`;
+      for (const it of v.input) s += it.inline ? `\n\n**${it.label}:** \`${T(it.text)}\`` : `\n\n**${it.label}:**\n${fence(T(it.long || it.collapsed ? trunc(it.text) : it.text), it.lang)}`;
+      if (v.todos) s += '\n\n' + v.todos.map(t => `- [${t.status === 'completed' ? 'x' : ' '}] ${t.content} (${t.status})`).join('\n');
+      if (S.showOutput && v.output && v.output.trim()) s += `\n\n**Вывод:**\n${fence(T(trunc(v.output)), v.outLang)}`;
+      if (v.error) s += `\n\n**Ошибка:**\n${fence(v.error)}`;
+      return s;
+    }
+    case 'task': {
+      const t = taskView(b);
+      let s = `### 🧩 Субагент «${t.type}»: ${t.description}${t.status && t.status !== 'completed' ? ' · ❌ ' + t.status : ''}`;
+      if (t.prompt) s += `\n\n**Промпт субагенту:**\n\n${quote(T(t.prompt))}`;
+      if (S.showOutput && t.result) s += `\n\n**Результат:**\n\n${T(t.result)}`;
+      if (t.error) s += `\n\n**Ошибка:** ${t.error}`;
+      return s;
+    }
+    case 'patch': return `### 📄 Изменённые файлы\n\n` + (b.p.files || []).map(f => `- \`${T(f)}\``).join('\n');
+    case 'step': { const tk = b.p.tokens || {}; return `*Шаг: ${b.p.reason || ''}, токены вход ${tk.input ?? ''} / выход ${tk.output ?? ''}*`; }
+    default:
+      if (b.p.type === 'error') return `### ⚠ Ошибка\n\n${fence(b.text)}`;
+      return `### ⚠ ${b.p.type}\n\n${fence(trunc(JSON.stringify(stripIds(b.p), null, 2)), 'json')}`;
+  }
+}
+function exportItems() {
+  const sel = R.visible.filter(x => R.selected.has(x.b.uid));
+  return sel.length ? sel : R.visible;
+}
+function exportText(items, withHeader = true, fmt = S.fmt) {
+  const s = cur(); if (!s) return '';
+  const X = fmt === 'xml', out = [];
+  const head = withHeader && S.includeHeader;
+  if (head) out.push(headerOf(s, X));
+  let openSub = null;
+  for (const x of items) {
+    const b = x.b;
+    const inSub = x.depth > 0 ? b.sid : null;
+    if (inSub !== openSub) {
+      if (openSub && X) out.push('</subagent_session>');
+      if (inSub) {
+        const cs = R.sessions.get(inSub);
+        out.push(X ? `<subagent_session id="${attr(inSub)}" title="${attr(cs.info.title)}">` : `---\n\n## ↳ Сессия субагента: ${cs.info.title || inSub}`);
+      } else if (!X) out.push('---\n\n## ↩ Основная сессия');
+      openSub = inSub;
+    }
+    out.push(X ? blockXml(b) : blockMd(b));
+    const note = R.notes[b.uid];
+    if (S.includeNotes && note && note.trim())
+      out.push(X ? `<note>\n${note.trim()}\n</note>` : `> 📝 **Заметка:** ${note.trim().replace(/\n/g, '\n> ')}`);
+  }
+  if (openSub && X) out.push('</subagent_session>');
+  if (head && X) out.push('</session>');
+  return out.join('\n\n') + '\n';
+}
+const exportName = () => `${(cur() || {}).id || 'session'}-excerpt.${S.fmt === 'xml' ? 'txt' : 'md'}`;
+function openModal() {
+  if (!cur()) return;
+  $('#modalFmt').value = S.fmt;
+  fillModal();
+  $('#modal').classList.add('open');
+  $('#modalText').focus();
+}
+function fillModal() {
+  const items = exportItems();
+  const t = exportText(items, true, $('#modalFmt').value);
+  $('#modalText').value = t;
+  $('#modalInfo').textContent = `${items.length} блоков · ${fmtNum(t.length)} симв. · ≈ ${fmtNum(estTokens(t))} ток. (текст можно править перед копированием)`;
+}
+
+/* ======================= selection ======================= */
+function setSel(uid, on) {
+  if (on) R.selected.add(uid); else R.selected.delete(uid);
+  const el = $(`article[data-uid="${CSS.escape(uid)}"]`);
+  if (el) { el.classList.toggle('sel', on); const cb = $('.sel-cb', el); if (cb) cb.checked = on; }
+}
+function clickSel(uid, shift) {
+  const on = !R.selected.has(uid);
+  if (shift && R.lastClicked) {
+    const a = R.visible.findIndex(x => x.b.uid === R.lastClicked), b = R.visible.findIndex(x => x.b.uid === uid);
+    if (a >= 0 && b >= 0) {
+      const target = R.selected.has(R.lastClicked);
+      for (let i = Math.min(a, b); i <= Math.max(a, b); i++) setSel(R.visible[i].b.uid, target);
+      R.lastClicked = uid; updateSelBar(); return;
+    }
+  }
+  setSel(uid, on); R.lastClicked = uid; updateSelBar();
+}
+
+/* ======================= events ======================= */
+$('#openBtn').onclick = () => $('#fileInput').click();
+$('#fileInput').onchange = e => { loadFiles([...e.target.files]); e.target.value = ''; };
+$('#menuBtn').onclick = () => document.body.classList.toggle('side-open');
+$('#themeBtn').onclick = () => { S.theme = { auto: 'light', light: 'dark', dark: 'auto' }[S.theme]; saveSettings(); syncControls(); };
+
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { dragDepth++; $('#dropOverlay').classList.add('on'); } });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dropOverlay').classList.remove('on'); } });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('#dropOverlay').classList.remove('on');
+  const files = [...(e.dataTransfer.files || [])];
+  if (files.length) loadFiles(files);
+});
+
+/* sidebar */
+$('#sidebar').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.kind) S.kinds[t.dataset.kind] = t.checked;
+  else if (t.id === 'optOutput') S.showOutput = t.checked;
+  else if (t.id === 'optInline') S.inlineSub = t.checked;
+  else if (t.id === 'optMarkdown') S.markdown = t.checked;
+  else if (t.id === 'optProblems') S.problemsOnly = t.checked;
+  else if (t.id === 'optCtx') S.ctx = Math.max(0, +t.value || 0);
+  else if (t.id === 'optFmt') { S.fmt = t.value; saveSettings(); return; }
+  else if (t.id === 'optTrunc') { S.truncate = Math.max(0, +t.value || 0); saveSettings(); return; }
+  else if (t.id === 'optShort') { S.shortPaths = t.checked; saveSettings(); return; }
+  else if (t.id === 'optHeader') { S.includeHeader = t.checked; saveSettings(); return; }
+  else if (t.id === 'optNotes') { S.includeNotes = t.checked; saveSettings(); return; }
+  else if (t.id === 'problemRe') return;
+  else return;
+  saveSettings(); renderAll();
+});
+let reTimer;
+$('#problemRe').addEventListener('input', e => {
+  clearTimeout(reTimer);
+  reTimer = setTimeout(() => {
+    S.problemRe = e.target.value;
+    let re = null;
+    try { re = S.problemRe ? new RegExp(S.problemRe, 'mu') : null; e.target.style.borderColor = ''; }
+    catch { e.target.style.borderColor = 'var(--c-err)'; return; }
+    saveSettings();
+    for (const s of R.sessions.values()) evalProblems(s, re);
+    renderAll();
+  }, 400);
+});
+$('#sidebar').addEventListener('click', e => {
+  const preset = e.target.closest('[data-preset]');
+  if (preset) {
+    const P = {
+      dialog:   { kinds: { user: 1, assistant: 1 }, out: true },
+      thinking: { kinds: { user: 1, assistant: 1, reasoning: 1 }, out: true },
+      work:     { kinds: { user: 1, assistant: 1, reasoning: 1, tool: 1, task: 1, other: 1 }, out: false },
+      all:      { kinds: { user: 1, assistant: 1, reasoning: 1, tool: 1, task: 1, patch: 1, step: 1, other: 1 }, out: true },
+    }[preset.dataset.preset];
+    for (const k in KINDS) S.kinds[k] = !!P.kinds[k];
+    S.showOutput = P.out; S.problemsOnly = false; S.hiddenTools = [];
+    saveSettings(); renderAll(); return;
+  }
+  const chip = e.target.closest('.chip[data-tool]');
+  if (chip) {
+    const t = chip.dataset.tool;
+    S.hiddenTools = S.hiddenTools.includes(t) ? S.hiddenTools.filter(x => x !== t) : [...S.hiddenTools, t];
+    saveSettings(); renderAll(); return;
+  }
+  if (e.target.id === 'toolsAll') { S.hiddenTools = []; saveSettings(); renderAll(); return; }
+  if (e.target.id === 'toolsNone') { S.hiddenTools = Object.keys(countKinds(cur()).tools); saveSettings(); renderAll(); return; }
+  const rm = e.target.closest('[data-act="remove-session"]');
+  if (rm) { e.stopPropagation(); removeSession(rm.dataset.sid); return; }
+  const sess = e.target.closest('.sess[data-sid]');
+  if (sess) { R.cur = sess.dataset.sid; document.body.classList.remove('side-open'); renderAll(true); return; }
+  const a = e.target.closest('#toc a[data-turn]');
+  if (a) {
+    e.preventDefault();
+    const n = +a.dataset.turn;
+    const el = $$('.turn').find(x => +x.dataset.turn >= n);
+    if (el) el.scrollIntoView({ block: 'start' }); else toast('Этот ход скрыт фильтрами');
+    document.body.classList.remove('side-open');
+  }
+});
+
+/* timeline */
+$('#timeline').addEventListener('click', e => {
+  const t = e.target;
+  const art = t.closest('article.blk');
+  const uid = art && art.dataset.uid;
+  if (t.classList.contains('sel-cb')) { clickSel(uid, e.shiftKey); return; }
+  const exp = t.closest('.expander');
+  if (exp) {
+    const k = exp.dataset.key;
+    if (R.expanded.has(k)) R.expanded.delete(k); else R.expanded.add(k);
+    rerenderBlock(uid); return;
+  }
+  const act = t.closest('[data-act]');
+  if (act) {
+    const a = act.dataset.act;
+    if (a === 'copy') { const x = R.visible.find(v => v.b.uid === uid); if (x) copyText(exportText([x], false)); }
+    else if (a === 'note') {
+      if (R.notes[uid] == null) { R.editingNote = uid; rerenderBlock(uid); const ta = $(`article[data-uid="${CSS.escape(uid)}"] .note textarea`); if (ta) ta.focus(); }
+      else { const ta = $(`article[data-uid="${CSS.escape(uid)}"] .note textarea`); if (ta) ta.focus(); }
+    }
+    else if (a === 'open-session') { R.cur = act.dataset.sid; renderAll(true); }
+    else if (a === 'copy-str') copyText(act.dataset.str);
+    else if (a === 'sel-turn') {
+      const n = +act.dataset.turn, items = R.visible.filter(x => x.rootTurn === n);
+      const on = !items.every(x => R.selected.has(x.b.uid));
+      items.forEach(x => setSel(x.b.uid, on)); updateSelBar();
+    }
+    return;
+  }
+  if (art && t.closest('.bh') && !t.closest('a,input,textarea,button')) clickSel(uid, e.shiftKey);
+});
+$('#timeline').addEventListener('mousedown', e => { if (e.shiftKey && e.target.closest('.bh')) e.preventDefault(); });
+$('#timeline').addEventListener('input', e => {
+  const ta = e.target.closest('.note textarea'); if (!ta) return;
+  R.notes[ta.dataset.uid] = ta.value; saveNotes();
+});
+$('#timeline').addEventListener('focusout', e => {
+  const ta = e.target.closest('.note textarea'); if (!ta) return;
+  const uid = ta.dataset.uid;
+  if (!ta.value.trim()) { delete R.notes[uid]; saveNotes(); if (R.editingNote === uid) R.editingNote = null; setTimeout(() => rerenderBlock(uid), 0); }
+  else if (R.editingNote === uid) R.editingNote = null;
+});
+
+/* selection bar */
+$('#selAll').onclick = () => { R.visible.forEach(x => setSel(x.b.uid, true)); updateSelBar(); };
+$('#selProblems').onclick = () => { R.visible.forEach(x => { if (x.b.problem) setSel(x.b.uid, true); }); updateSelBar(); };
+$('#selNone').onclick = () => { [...R.selected].forEach(u => setSel(u, false)); R.selected.clear(); updateSelBar(); };
+$('#copyBtn').onclick = () => { if (cur()) copyText(exportText(exportItems())); };
+$('#downloadBtn').onclick = () => { if (cur()) download(exportName(), exportText(exportItems())); };
+$('#previewBtn').onclick = openModal;
+$('#modalFmt').onchange = fillModal;
+$('#modalCopy').onclick = () => copyText($('#modalText').value);
+$('#modalDownload').onclick = () => download(exportName().replace(/\.\w+$/, $('#modalFmt').value === 'xml' ? '.txt' : '.md'), $('#modalText').value);
+$('#modalClose').onclick = () => $('#modal').classList.remove('open');
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.remove('open'); });
+
+/* search */
+let searchTimer;
+$('#search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    R.search = e.target.value.trim().toLowerCase(); R.matchIdx = -1;
+    renderAll(); updateSearchCount();
+  }, 250);
+});
+$('#search').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); gotoMatch(e.shiftKey ? -1 : 1); } });
+$('#searchOnly').onchange = e => { R.searchOnly = e.target.checked; R.matchIdx = -1; renderAll(); updateSearchCount(); };
+$('#searchNext').onclick = () => gotoMatch(1);
+$('#searchPrev').onclick = () => gotoMatch(-1);
+
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === 'Escape') {
+    if ($('#modal').classList.contains('open')) $('#modal').classList.remove('open');
+    else if (document.activeElement === $('#search')) { $('#search').value = ''; R.search = ''; renderAll(); updateSearchCount(); $('#search').blur(); }
+    document.body.classList.remove('side-open');
+  } else if (e.key === '/' && !typing) { e.preventDefault(); $('#search').focus(); }
+});
+
+/* public hook for scripted loading (e.g. tests) */
+window.OCV = { load(data, name = 'session.json') { addSession(data, name); linkSessions(); if (!R.cur) R.cur = pickRoot(); renderAll(true); }, R, S, exportText, exportItems };
+
+renderAll(true);
+</script>
+</body>
+</html>
